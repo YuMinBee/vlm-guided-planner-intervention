@@ -1,0 +1,29 @@
+# Local editor and operating-system files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Generated data and model artifacts
+data/
+datasets/
+outputs/
+checkpoints/
+weights/
+videos/
+logs/
+*.pth
+*.pt
+*.ckpt
+*.onnx
+*.mp4
+*.zip
