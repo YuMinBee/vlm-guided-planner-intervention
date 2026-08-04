@@ -1,6 +1,6 @@
 # Rights Notice
 
-Copyright © 2026 The repository owner. All rights reserved.
+Copyright © 2026 YuMinBee. All rights reserved.
 
 No license is granted to copy, modify, distribute, sublicense, or create derivative works from the original text and diagrams in this repository, except where applicable law permits otherwise.
 
