@@ -1,6 +1,7 @@
 # VLM-Guided Semantic Trajectory Gating
 
-> 상태: 개인 연구 아이디어 문서. 구현 코드나 학습 산출물을 배포하는 저장소가 아닙니다.
+> 상태: 개인 연구 아이디어와 로컬 프로토타입 검증 기록. 제3자 구현 코드나
+> 학습·평가 산출물을 배포하는 저장소가 아닙니다.
 
 ## 한 줄 아이디어
 
@@ -40,6 +41,21 @@ flowchart LR
 
 자세한 설계와 평가 계획은 [개념 문서](docs/concept.md)에 정리되어 있다.
 
+## 로컬 프로토타입 검증
+
+이 설계를 HiP-AD 기반의 로컬 연구 프로토타입에 연결해 두 개의 통제된
+Bench2Drive 경로에서 확인했다. 두 실행 모두 카메라 프레임마다 로컬 VLM을
+동기식으로 호출했으며, 미리 정한 명령 스케줄이나 강제 명령을 사용하지
+않았다.
+
+- `Town12/ParkingExit`: 경로 점수 100, 페널티 1.0, 종합 점수 100
+- `Town12/BlockedIntersection`: 경로 점수 100, 페널티 1.0, 종합 점수 100
+- 두 실행 모두 VLM 오류, 충돌, 경로 차선 이탈 0
+
+교차로 실행에서는 VLM의 이른 회전 예측을 경로 명령과 일치할 때까지
+보류하고, 일치한 구간에서만 CARLA 지도 분기를 목표점으로 사용했다. 상세한
+조건, 집계 수치, 한계는 [검증 기록](docs/verified-prototype.md)에 적었다.
+
 ## 설계 이유
 
 - 고수준 의미 판단과 연속 제어를 분리해 VLM의 불안정성이 차량 제어에 직접 전달되는 것을 줄인다.
@@ -53,7 +69,7 @@ flowchart LR
 
 - HiP-AD 또는 다른 제3자 프로젝트의 소스 코드와 설정 파일
 - 모델 가중치, 데이터셋, 이미지, 동영상, 논문 그림
-- 제3자 저장소에서 생성된 로그와 평가 산출물
+- 제3자 저장소에서 생성된 원본 로그와 평가 산출물
 - 기존 파일을 수정한 패치나 재배포 가능한 실행 구현
 
 ## 배경 참고
@@ -66,4 +82,10 @@ flowchart LR
 
 ## English summary
 
-This repository documents a model-agnostic concept: use a vision-language model to infer a high-level driving intent, restrict a multimodal motion planner to a command-consistent candidate set, apply lightweight geometric consistency checks, and select the final trajectory with an explicit safety fallback. It contains no third-party source code, weights, datasets, figures, or evaluation artifacts.
+This repository documents a model-agnostic concept and aggregate observations
+from a local prototype: use a vision-language model to infer a high-level
+driving intent, restrict a multimodal motion planner to a command-consistent
+candidate set, apply lightweight geometric and route-consistency checks, and
+select the final trajectory with an explicit safety fallback. It contains no
+third-party source code, weights, datasets, figures, raw logs, or evaluation
+artifacts.
