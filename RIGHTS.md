@@ -11,3 +11,8 @@ The absence of an open-source license is intentional. Any future implementation 
 The independent reference implementation under `src/` and its tests are also
 covered by this rights notice. They do not include or grant rights to any
 third-party planner, simulator, model, or integration code.
+
+The two demonstration recordings under `media/demos/` were captured from local
+experiments. This notice does not override the separate rights and license terms
+for visible third-party simulator assets and referenced projects described in
+`THIRD_PARTY.md`.

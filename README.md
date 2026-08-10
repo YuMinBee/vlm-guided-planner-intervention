@@ -1,12 +1,14 @@
-# VLM-Guided Semantic Trajectory Gating
+# VLM-Guided Planner Intervention
 
 > 상태: 동기식 로컬 프로토타입과 비동기 VLM 개입 주행의 검증 기록,
-> 그리고 독립적 비동기 런타임 참조 구현을 담습니다. 제3자 구현 코드나
-> 학습·평가 산출물은 포함하지 않습니다.
+> 독립적 비동기 런타임 참조 구현, 압축된 성공·실패 시연 영상을 담습니다.
+> 제3자 구현 코드나 원본 학습·평가 산출물은 포함하지 않습니다.
 
 ## 한 줄 아이디어
 
-카메라 장면을 해석한 VLM의 고수준 주행 의도를 이용해, 기존 멀티모달 궤적 계획기가 만든 후보 중 **의미적으로 허용되는 후보 집합을 먼저 한정**한 뒤 그 안에서 최종 궤적을 선택한다.
+카메라 장면을 해석한 VLM의 고수준 주행 의도를 시간·경로·기하 조건으로
+검증한 뒤, 기존 계획기의 후보 선택, 목표점 또는 제한된 궤적 보정에 반영한다.
+연속 궤적 생성과 저수준 제어의 책임은 기존 계획기에 남긴다.
 
 ## 문제 정의
 
@@ -20,11 +22,11 @@
 flowchart LR
     A[카메라 관측] --> B[VLM 고수준 의도 추론]
     A --> C[기존 궤적 계획기]
-    B --> D[명령별 허용 후보 집합]
-    C --> E[후보 궤적과 점수]
-    D --> F[의미 마스킹 및 기하 검증]
+    B --> D[시간·경로 기반 명령 검증]
+    C --> E[후보 궤적·점수·기본 목표점]
+    D --> F[후보 제한·목표점 선택·제한 보정]
     E --> F
-    F --> G[허용 집합 내 최종 선택]
+    F --> G[검증된 연속 궤적]
     G --> H[안전 폴백 및 제어]
 ```
 
@@ -64,6 +66,20 @@ flowchart LR
 개입 경로의 동작 증거이지만, native planner 대비 성능 향상을 입증하는 비교
 실험은 아니다.
 
+## 문 열림 시나리오 영상
+
+동일한 Town13 `VehicleOpensDoorTwoWays` 경로에서 통합 설정을 수정하기 전의
+실패 실행과 수정 후의 성공 실행을 함께 공개한다.
+
+| 결과 | 영상 | 해석 |
+|---|---|---|
+| 성공 | [MP4 · 18.8초 · 6.8MB](media/demos/open-door-success.mp4) | VLM의 `change_lane_left`가 60프레임 동안 인접 차선 target과 제한 보정을 활성화해 충돌·이탈 없이 완주 |
+| 실패 | [MP4 · 26.1초 · 9.2MB](media/demos/open-door-failure.mp4) | VLM은 열린 문과 좌측 변경을 인식했지만 이전 통합 설정에서 정체되어 31.99%에서 실행 중단 |
+
+실패본은 VLM 인식 실패 비교군이 아니라 통합 설정의 실패를 보여 주는 진단
+기록이다. 두 영상의 상세 조건과 제3자 출처는
+[영상 설명과 출처](media/demos/README.md)에 정리했다.
+
 ## 로컬 프로토타입 검증
 
 이 설계를 HiP-AD 기반의 로컬 연구 프로토타입에 연결해 두 개의 통제된
@@ -92,9 +108,12 @@ Bench2Drive 경로에서 확인했다. 두 실행 모두 카메라 프레임마�
 않는 최소 참조 구현만 담는다. 다음 자료는 포함하지 않는다.
 
 - HiP-AD 또는 다른 제3자 프로젝트의 소스 코드와 설정 파일
-- 모델 가중치, 데이터셋, 이미지, 동영상, 논문 그림
+- 모델 가중치, 데이터셋, 원본 이미지·영상, 논문 그림
 - 제3자 저장소에서 생성된 원본 로그와 평가 산출물
 - HiP-AD 또는 다른 제3자 파일을 수정한 패치와 통합 코드
+
+예외적으로 이 저장소가 직접 기록·압축한 문 열림 시나리오 시연 영상 두 개만
+포함하며, 영상에 보이는 제3자 시뮬레이터 에셋의 권리는 원 권리자에게 있다.
 
 ## 배경 참고
 
@@ -106,10 +125,11 @@ Bench2Drive 경로에서 확인했다. 두 실행 모두 카메라 프레임마�
 
 ## English summary
 
-This repository documents a model-agnostic concept, aggregate observations
-from synchronous and asynchronous local prototypes, and an independent
-asynchronous latest-frame runtime reference. It uses a
-vision-language model to constrain multimodal trajectory selection while the
-base planner retains continuous control and explicit fallback responsibility.
-It contains no third-party source code, weights, datasets, figures, raw logs,
-evaluation artifacts, or planner integration patches.
+This repository documents a model-agnostic planner-intervention concept,
+aggregate observations from synchronous and asynchronous local prototypes,
+an independent asynchronous latest-frame runtime reference, and two compressed
+open-door demonstration recordings. A vision-language model supplies validated
+high-level intent while the base planner retains continuous trajectory and
+control responsibility. The repository contains no third-party source code,
+weights, datasets, figures, raw logs, original evaluation artifacts, or planner
+integration patches.
