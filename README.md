@@ -55,10 +55,12 @@ flowchart LR
 - 모의 테스트: `PYTHONPATH=src python -m unittest discover -s tests -v`
 
 독립 참조 구현은 모의 테스트를 통과했다. 같은 최신 결과·TTL·폴백
-원칙을 로컬 통합 프로토타입에 적용한 CARLA 주행에서도 두 통제 경로를
+원칙을 로컬 통합 프로토타입에 적용한 CARLA 주행에서도 세 통제 경로를
 완주했다. 범용 3B 모델 실험은 안전 폴백만 검증했지만, 후속 파인튜닝
 7B 실험에서는 막힌 교차로의 51프레임 동안 VLM·route·유효 planner 명령이
-`right`로 일치했고, 검증된 우회전 target이 실제로 적용됐다. 이는 비동기
+`right`로 일치했고 검증된 우회전 target이 실제로 적용됐다. 열린 차량 문
+회피 경로에서는 VLM의 `change_lane_left`가 60프레임 동안 인접 차선 target과
+제한된 궤적 보정을 활성화했고, 충돌과 차선 이탈 없이 완주했다. 이는 비동기
 개입 경로의 동작 증거이지만, native planner 대비 성능 향상을 입증하는 비교
 실험은 아니다.
 
