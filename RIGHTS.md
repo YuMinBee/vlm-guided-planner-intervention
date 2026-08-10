@@ -7,3 +7,7 @@ No license is granted to copy, modify, distribute, sublicense, or create derivat
 This notice does not claim ownership of third-party names, projects, or referenced works. It also does not grant or imply any patent license.
 
 The absence of an open-source license is intentional. Any future implementation may be released under a separately selected license after ownership and third-party obligations are reviewed.
+
+The independent reference implementation under `src/` and its tests are also
+covered by this rights notice. They do not include or grant rights to any
+third-party planner, simulator, model, or integration code.

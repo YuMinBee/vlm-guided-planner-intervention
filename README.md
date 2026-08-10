@@ -1,7 +1,8 @@
 # VLM-Guided Semantic Trajectory Gating
 
-> 상태: 개인 연구 아이디어와 로컬 프로토타입 검증 기록. 제3자 구현 코드나
-> 학습·평가 산출물을 배포하는 저장소가 아닙니다.
+> 상태: 동기식 로컬 프로토타입 검증 기록과, 실제 주행 검증 전인
+> 독립적 비동기 런타임 참조 구현을 담습니다. 제3자 구현 코드나
+> 학습·평가 산출물은 포함하지 않습니다.
 
 ## 한 줄 아이디어
 
@@ -41,6 +42,20 @@ flowchart LR
 
 자세한 설계와 평가 계획은 [개념 문서](docs/concept.md)에 정리되어 있다.
 
+## 비동기 런타임 실험
+
+기존 계획기의 제어 주기가 VLM 추론을 기다리지 않도록, 크기 1의
+최신 프레임 큐와 별도 worker를 두는 참조 런타임을 추가했다. 결과에는
+원본 프레임과 시뮬레이션 시간을 붙이고, TTL을 넘거나 신뢰도가 낮은
+명령은 폐기한다. 유효한 VLM 결과가 없으면 기존 계획기로 폴백한다.
+
+- 설계: [비동기 런타임 문서](docs/async-runtime.md)
+- 독립 참조 구현: `src/vlm_async_gate/runtime.py`
+- 모의 테스트: `PYTHONPATH=src python -m unittest discover -s tests -v`
+
+현재 비동기 런타임은 모의 테스트만 통과했으며, 아직 CARLA 주행
+성공을 주장하지 않는다.
+
 ## 로컬 프로토타입 검증
 
 이 설계를 HiP-AD 기반의 로컬 연구 프로토타입에 연결해 두 개의 통제된
@@ -65,12 +80,13 @@ Bench2Drive 경로에서 확인했다. 두 실행 모두 카메라 프레임마�
 
 ## 이 저장소에 포함하지 않는 것
 
-이 저장소는 아이디어의 독립적인 설명만 담는다. 다음 자료는 포함하지 않는다.
+이 저장소는 아이디어의 독립적인 설명과 제3자 프로젝트에 의존하지
+않는 최소 참조 구현만 담는다. 다음 자료는 포함하지 않는다.
 
 - HiP-AD 또는 다른 제3자 프로젝트의 소스 코드와 설정 파일
 - 모델 가중치, 데이터셋, 이미지, 동영상, 논문 그림
 - 제3자 저장소에서 생성된 원본 로그와 평가 산출물
-- 기존 파일을 수정한 패치나 재배포 가능한 실행 구현
+- HiP-AD 또는 다른 제3자 파일을 수정한 패치와 통합 코드
 
 ## 배경 참고
 
@@ -82,10 +98,10 @@ Bench2Drive 경로에서 확인했다. 두 실행 모두 카메라 프레임마�
 
 ## English summary
 
-This repository documents a model-agnostic concept and aggregate observations
-from a local prototype: use a vision-language model to infer a high-level
-driving intent, restrict a multimodal motion planner to a command-consistent
-candidate set, apply lightweight geometric and route-consistency checks, and
-select the final trajectory with an explicit safety fallback. It contains no
-third-party source code, weights, datasets, figures, raw logs, or evaluation
-artifacts.
+This repository documents a model-agnostic concept, aggregate observations
+from a synchronous local prototype, and an independent asynchronous latest-
+frame runtime reference that has only been mock-tested so far. It uses a
+vision-language model to constrain multimodal trajectory selection while the
+base planner retains continuous control and explicit fallback responsibility.
+It contains no third-party source code, weights, datasets, figures, raw logs,
+evaluation artifacts, or planner integration patches.
