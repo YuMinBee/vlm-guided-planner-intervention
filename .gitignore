@@ -28,5 +28,4 @@ logs/
 *.ckpt
 *.onnx
 *.mp4
-!media/demos/*.mp4
 *.zip
