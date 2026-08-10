@@ -1,7 +1,7 @@
 # VLM-Guided Semantic Trajectory Gating
 
-> 상태: 동기식 로컬 프로토타입 검증 기록과, 실제 주행 검증 전인
-> 독립적 비동기 런타임 참조 구현을 담습니다. 제3자 구현 코드나
+> 상태: 동기식 로컬 프로토타입과 비동기 폴백 주행의 검증 기록,
+> 그리고 독립적 비동기 런타임 참조 구현을 담습니다. 제3자 구현 코드나
 > 학습·평가 산출물은 포함하지 않습니다.
 
 ## 한 줄 아이디어
@@ -50,11 +50,15 @@ flowchart LR
 명령은 폐기한다. 유효한 VLM 결과가 없으면 기존 계획기로 폴백한다.
 
 - 설계: [비동기 런타임 문서](docs/async-runtime.md)
+- CARLA 검증: [비동기 폴백 검증 기록](docs/async-validation.md)
 - 독립 참조 구현: `src/vlm_async_gate/runtime.py`
 - 모의 테스트: `PYTHONPATH=src python -m unittest discover -s tests -v`
 
-현재 비동기 런타임은 모의 테스트만 통과했으며, 아직 CARLA 주행
-성공을 주장하지 않는다.
+독립 참조 구현은 모의 테스트를 통과했다. 같은 최신 결과·TTL·폴백
+원칙을 로컬 통합 프로토타입에 적용한 CARLA 주행에서는 두 통제 경로를
+완주했다. 다만 당시 사용 가능한 일반 VLM이 유효한 보조 명령을 만들지
+못해 경로 게이트가 native planner를 유지했으므로, 이는 비동기 스케줄링과
+안전 폴백 검증이지 VLM 개입에 의한 성능 향상 증거는 아니다.
 
 ## 로컬 프로토타입 검증
 
@@ -99,8 +103,8 @@ Bench2Drive 경로에서 확인했다. 두 실행 모두 카메라 프레임마�
 ## English summary
 
 This repository documents a model-agnostic concept, aggregate observations
-from a synchronous local prototype, and an independent asynchronous latest-
-frame runtime reference that has only been mock-tested so far. It uses a
+from synchronous and asynchronous local prototypes, and an independent
+asynchronous latest-frame runtime reference. It uses a
 vision-language model to constrain multimodal trajectory selection while the
 base planner retains continuous control and explicit fallback responsibility.
 It contains no third-party source code, weights, datasets, figures, raw logs,
