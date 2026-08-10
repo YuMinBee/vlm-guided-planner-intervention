@@ -63,22 +63,24 @@ flowchart LR
 `right`로 일치했고 검증된 우회전 target이 실제로 적용됐다. 열린 차량 문
 회피 경로에서는 VLM의 `change_lane_left`가 60프레임 동안 인접 차선 target과
 제한된 궤적 보정을 활성화했고, 충돌과 차선 이탈 없이 완주했다. 이는 비동기
-개입 경로의 동작 증거이지만, native planner 대비 성능 향상을 입증하는 비교
-실험은 아니다.
+개입 경로가 실제 주행에 반영됐다는 증거다.
 
-## 문 열림 시나리오 전후 비교
+## 핵심 결과: HiP-AD 단독 실패 보완
 
-동일한 Town13 `VehicleOpensDoorTwoWays` 경로에서 비동기 VLM 통합 설정을
-수정하기 전후를 비교했다.
+이 프로젝트의 핵심은 중간 통합 설정의 수정 과정이 아니다. 기존 HiP-AD 단독
+주행에서 해결하지 못한 열린 차량 문 회피 실패 사례에 VLM을 연결해, 카메라
+장면의 고수준 의미를 실제 계획 조건으로 반영하고 완주까지 연결한 것이다.
 
-| 단계 | VLM 관측과 개입 | 결과 |
+| 구성 | 계획 방식 | 결과 |
 |---|---|---|
-| 수정 전 비동기 통합 | 열린 문에 대해 `change_lane_left`를 출력했고 인접 차선 target도 계산됐으나, 명령 제한과 waypoint 보정 설정이 충돌 | 진행률 31.99%에서 정체되어 수동 중단, 충돌 0 |
-| 수정 후 비동기 통합 | `change_lane_left`가 60프레임 동안 유효했고 인접 차선 target과 최대 1.057m의 제한 보정 적용 | 경로 100% 완주, 충돌·차선 이탈 0, 종합 점수 100 |
+| HiP-AD 단독 | VLM 장면 명령 없이 기존 planner의 경로·target·궤적 사용 | 열린 문 회피 실패 사례 발생 |
+| HiP-AD + 비동기 VLM | 열린 문을 `change_lane_left`로 해석하고, 60프레임 동안 인접 차선 target과 최대 1.057m의 제한 보정 적용 | 경로 100% 완주, 충돌·차선 이탈 0, 종합 점수 100 |
 
-두 실행 모두 VLM이 이미 연동된 상태였다. 따라서 이 결과는 “native planner가
-실패했지만 VLM을 추가하자 성공했다”는 비교가 아니라, **실패하던 초기 비동기
-VLM 통합을 교정해 실제 VLM 명령 개입과 완주까지 연결했다**는 검증이다.
+VLM은 조향이나 가감속을 직접 출력하지 않았다. VLM이 비동기로 제공한
+`change_lane_left`를 검증한 뒤 HiP-AD가 인접 차선 target과 연속 궤적을 만들고,
+기존 저수준 제어기가 이를 실행했다. 따라서 결과의 의미는 **HiP-AD의 기존 실패
+상황을 VLM의 의미 판단으로 보완했다**는 것이다. 다만 하나의 통제된 실패 사례에
+대한 결과이므로 전체 Bench2Drive에서 HiP-AD보다 우수하다는 주장은 아니다.
 
 ## 로컬 프로토타입 검증
 
@@ -129,3 +131,10 @@ model supplies validated high-level intent while the base planner retains
 continuous trajectory and control responsibility. The repository contains no
 third-party source code, weights, datasets, figures, videos, raw logs,
 evaluation artifacts, or planner integration patches.
+
+The central result is a controlled open-door failure case that HiP-AD alone did
+not resolve. With asynchronous VLM intervention, `change_lane_left` activated a
+validated adjacent-lane target and bounded trajectory correction for 60 control
+frames; the route then completed with a score of 100 and no collision or lane
+departure. This single case does not establish general superiority over the
+native planner.
