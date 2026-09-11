@@ -1,140 +1,132 @@
 # VLM-Guided Planner Intervention
 
-> 상태: 동기식 로컬 프로토타입과 비동기 VLM 개입 주행의 검증 기록,
-> 그리고 독립적 비동기 런타임 참조 구현을 담습니다. 제3자 구현 코드나
-> 학습·평가 산출물은 포함하지 않습니다.
+카메라 관측과 같은 시점의 차량 기준 경로 정보를 VLM에 전달하고, 비동기로
+받은 주행 의도를 검증해 기존 계획기의 경로·속도 선택에 반영한다. VLM은
+고수준 의도를 제공하고, 연속 궤적과 저수준 제어는 계획기와 제어기가 담당한다.
 
-## 한 줄 아이디어
+이 저장소에는 독립적인 비동기 런타임·관측 좌표 변환 참조 코드와 로컬 통합
+검증 기록이 있다. HiP-AD 통합 코드, 가중치, 데이터와 원본 실행 산출물은 포함하지 않는다.
 
-카메라 장면을 해석한 VLM의 고수준 주행 의도를 시간·경로·기하 조건으로
-검증한 뒤, 기존 계획기의 후보 선택, 목표점 또는 제한된 궤적 보정에 반영한다.
-연속 궤적 생성과 저수준 제어의 책임은 기존 계획기에 남긴다.
-
-## 문제 정의
-
-멀티모달 계획기는 여러 궤적 후보와 점수를 출력한다. 전체 점수가 가장 높은 후보가 경로 명령이나 장면의 의미와 항상 일치한다는 보장은 없다. 예를 들어 직진 의도가 분명한 상황에서도 좌회전 성향 후보가 선택될 수 있다.
-
-목표점이나 명령 벡터를 입력에 추가하는 것만으로는 이 문제가 완전히 해결되지 않을 수 있다. 입력 조건은 바뀌어도 마지막 후보 선택 단계가 모든 모드를 다시 경쟁시키기 때문이다.
-
-## 제안 구조
+## 동작 구조
 
 ```mermaid
 flowchart LR
-    A[카메라 관측] --> B[VLM 고수준 의도 추론]
-    A --> C[기존 궤적 계획기]
-    B --> D[시간·경로 기반 명령 검증]
-    C --> E[후보 궤적·점수·기본 목표점]
-    D --> F[후보 제한·목표점 선택·제한 보정]
-    E --> F
-    F --> G[검증된 연속 궤적]
-    G --> H[안전 폴백 및 제어]
+    A[카메라·위치·방향·경로 관측] --> B[관측 시점의 차량 기준 목표점]
+    A --> C[기존 계획기의 후보 경로·속도]
+    B --> D[최신 프레임 큐와 VLM worker]
+    D --> E[원본 시점·명령·유효성 검사]
+    E --> F[경로 의도와 회전 완료 상태]
+    C --> G[경로·속도 공동 선택과 운동 예측]
+    F --> G
+    G --> H[동일한 조향 계산으로 실행]
 ```
 
-핵심은 VLM이 직접 조향·가속 값을 생성하게 하지 않는다는 점이다. VLM은 `직진`, `좌회전`, `우회전`, `차선 변경`과 같은 고수준 제약만 제공하고, 연속 궤적과 저수준 제어는 기존 계획기의 영역으로 남긴다.
+1. **입력 기준을 맞춘다.** 목표점에서 관측 당시 차량 위치를 빼고 전방·우측
+   축에 투영한다. 프롬프트는 x=전방, y=우측을 사용한다. 카메라와 좌표는 같은
+   프레임·시뮬레이션 시각으로 묶는다.
+2. **추론을 비동기로 처리한다.** 크기1 큐는 대기 중인 최신 관측만 유지한다.
+   제어 루프는 VLM 응답을 기다리지 않고, 결과를 원본 시각·TTL·출력 유효성에
+   따라 수용한다. 참조 런타임은 신뢰도 임계값도 검사할 수 있다.
+3. **의도를 실행 상태에 연결한다.** 로컬 통합은 경로가 뒷받침하는 회전의
+   관측 시점 출구를 기억한다. 다음 내비게이션 명령이 바뀌었다는 이유만으로
+   회전을 끝내지 않고, 현재 위치·방향으로 완료를 확인한다. 정지 명령은 우선한다.
+4. **경로와 속도를 함께 선택한다.** 실제 조향에 사용할 공간 경로와 속도를
+   조합해 경로 기하와 예측 장애물을 검사한다. 후보 번호만으로 회전 의미를
+   단정하지 않으며, 필요한 경로 후보와 감속·정지 선택을 고려한다.
+5. **검사한 계획을 실행한다.** 로컬 제어 구성은 후보 운동 예측과 실제 조향에
+   같은 pure-pursuit 계산을 사용하고, 기존 종방향 PID를 유지한다.
 
-## 선택 규칙의 개요
+첫 두 단계의 최소 참조 코드가 `src/`에 있다. 회전 상태·공동 선택·제어까지
+포함한 전체 흐름은 로컬 통합의 설계이며, 이 저장소 설치만으로 자동 활성화되지는 않는다.
+[설계 문서](docs/concept.md)에 각 단계의 책임과 범위를 설명한다.
 
-기존 계획기가 후보 궤적 `T = {τ₁, …, τₙ}`과 점수 `sᵢ`를 만들고, VLM이 명령 `c`와 신뢰도 `q`를 출력한다고 하자.
+## 참조 코드 사용
 
-1. 명령별 허용 집합 `A(c)`를 조회한다.
-2. `A(c)` 밖의 후보를 최종 경쟁에서 제외한다.
-3. 허용 후보에 대해 횡방향 이동, 종방향 진행, 곡률 등 간단한 기하 일관성을 검사한다.
-4. 남은 후보 중 보정 점수가 가장 높은 궤적을 선택한다.
-5. VLM 신뢰도가 낮거나 유효 후보가 없으면 사전에 정한 안전 폴백을 사용한다.
+```python
+from vlm_async_gate import FrameSample, capture_navigation
 
-자세한 설계와 평가 계획은 [개념 문서](docs/concept.md)에 정리되어 있다.
+navigation = capture_navigation(
+    frame_id=10, simulation_time_s=1.0,
+    position_xy=(100, 200),
+    forward_xy=(0, -1), right_xy=(1, 0),
+    near_target_xy=(102, 190), far_target_xy=(97, 180),
+)
+assert navigation.near_forward_right == (10.0, 2.0)
+payload = {"navigation": navigation, "prompt_fields": navigation.prompt_values()}
+sample = FrameSample(navigation.frame_id, navigation.simulation_time_s, payload)
+# 실제 제출 시 payload에 같은 관측 시점의 카메라 입력을 함께 넣는다.
+# worker.submit(sample)
+```
 
-## 비동기 런타임 실험
+세계 좌표계와 단위는 호출자가 일치시켜야 한다. 전방·우측 단위축을 명시하므로
+특정 시뮬레이터의 방향각 규약에 의존하지 않는다. 지연 응답이 도착할 때 새
+차량 위치로 과거 입력을 다시 변환하지 않는다.
 
-기존 계획기의 제어 주기가 VLM 추론을 기다리지 않도록, 크기 1의
-최신 프레임 큐와 별도 worker를 두는 참조 런타임을 추가했다. 결과에는
-원본 프레임과 시뮬레이션 시간을 붙이고, TTL을 넘거나 신뢰도가 낮은
-명령은 폐기한다. 유효한 VLM 결과가 없으면 기존 계획기로 폴백한다.
+- [좌표 계약과 예제](docs/capture-coordinates.md)
+- [비동기 시간 계약](docs/async-runtime.md)
+- 코드: `src/vlm_async_gate/coordinates.py`, `src/vlm_async_gate/runtime.py`
+- 테스트: `PYTHONPATH=src python3 -m unittest discover -s tests -v`
 
-- 설계: [비동기 런타임 문서](docs/async-runtime.md)
-- CARLA 검증: [비동기 폴백 검증 기록](docs/async-validation.md)
-- 독립 참조 구현: `src/vlm_async_gate/runtime.py`
-- 모의 테스트: `PYTHONPATH=src python -m unittest discover -s tests -v`
+## 검증 결과
 
-독립 참조 구현은 모의 테스트를 통과했다. 같은 최신 결과·TTL·폴백
-원칙을 로컬 통합 프로토타입에 적용한 CARLA 주행에서도 세 통제 경로를
-완주했다. 범용 3B 모델 실험은 안전 폴백만 검증했지만, 후속 파인튜닝
-7B 실험에서는 막힌 교차로의 51프레임 동안 VLM·route·유효 planner 명령이
-`right`로 일치했고 검증된 우회전 target이 실제로 적용됐다. 열린 차량 문
-회피 경로에서는 VLM의 `change_lane_left`가 60프레임 동안 인접 차선 target과
-제한된 궤적 보정을 활성화했고, 충돌과 차선 이탈 없이 완주했다. 이는 비동기
-개입 경로가 실제 주행에 반영됐다는 증거다.
+기존 HiP-AD가 해결하지 못한 열린 차량 문 회피 사례에서는 비동기 VLM의
+`change_lane_left`가 검증된 인접 차선 목표점과 제한된 궤적 보정을 활성화했고,
+경로를100% 완주하며 충돌·차선 이탈0, 종합 점수100을 기록했다.
+이것은 초기 통합 구성의 실패 상황 보완 사례이며 전체 데이터셋의 우월성을 뜻하지 않는다.
+[당시 비동기 검증 기록](docs/async-validation.md)에 조건과 개입 내역을 보존한다.
 
-## 핵심 결과: HiP-AD 단독 실패 보완
+현재 로컬 경로·속도·조향 구성의 개발 비교는 다음과 같다. 비교 기준에도
+동일한 차량 기준 좌표 입력을 적용했다.
 
-기존 HiP-AD 단독 주행에서 해결하지 못한 열린 차량 문 회피 실패 사례에 VLM을
-연결해, 카메라 장면의 고수준 의미를 실제 계획 조건으로 반영하고 완주까지
-연결했다.
+| 경로27532 구성 | 시드 | 구조물 충돌 | 차량 충돌 | 완료율 | Driving Score |
+|---|---:|---:|---:|---:|---:|
+| 좌표가 일치하는 기존 구성 | 0 | 1 | 1 | 100% | 39.0 |
+| 경로·속도·조향 구성 | 0 | 0 | 0 | 100% | 100.0 |
+| 경로·속도·조향 구성 | 1 | 0 | 0 | 100% | 100.0 |
 
-| 구성 | 계획 방식 | 결과 |
-|---|---|---|
-| HiP-AD 단독 | VLM 장면 명령 없이 기존 planner의 경로·target·궤적 사용 | 열린 문 회피 실패 사례 발생 |
-| HiP-AD + 비동기 VLM | 열린 문을 `change_lane_left`로 해석하고, 60프레임 동안 인접 차선 target과 최대 1.057m의 제한 보정 적용 | 경로 100% 완주, 충돌·차선 이탈 0, 종합 점수 100 |
+같은 고정 구성은 기존 성공 경로2989·3482도 충돌 없이 완주했다. 확인 범위는
+선정3개 경로의4회 완주다. 좌표 입력 하나나 VLM 자체의 효과로 이 결과를
+설명하지 않으며, 학습 연결층의 성능도 아니다.
+[제어 검증 기록](docs/grounded-control-validation.md)에 조향기 단독 비교,
+실행 조건과 한계를 정리한다. [동기식 초기 검증](docs/verified-prototype.md)은
+별도 구성의 기록으로 남긴다.
 
-VLM은 조향이나 가감속을 직접 출력하지 않았다. VLM이 비동기로 제공한
-`change_lane_left`를 검증한 뒤 HiP-AD가 인접 차선 target과 연속 궤적을 만들고,
-기존 저수준 제어기가 이를 실행했다. 따라서 결과의 의미는 **HiP-AD의 기존 실패
-상황을 VLM의 의미 판단으로 보완했다**는 것이다. 다만 하나의 통제된 실패 사례에
-대한 결과이므로 전체 Bench2Drive에서 HiP-AD보다 우수하다는 주장은 아니다.
+## 구현과 평가 범위
 
-## 로컬 프로토타입 검증
+공개 참조 코드는 좌표 변환과 최신 프레임·TTL 런타임을 구현하고 모의 테스트를
+통과했다. 전체 로컬 제어 통합은 별도로 검증했으며, 공개 참조 코드와 동일한
+배포물은 아니다. 제어 코드 패키징 후 새 주행은 실행하지 않았다.
 
-이 설계를 HiP-AD 기반의 로컬 연구 프로토타입에 연결해 두 개의 통제된
-Bench2Drive 경로에서 확인했다. 두 실행 모두 카메라 프레임마다 로컬 VLM을
-동기식으로 호출했으며, 미리 정한 명령 스케줄이나 강제 명령을 사용하지
-않았다.
+CARLA의 시뮬레이션 시간과 실제 추론 시간은 다르다. 제어 루프가 VLM을 직접
+기다리지 않는다는 사실만으로 실시간20Hz 주행이나 지연 강인성이 입증되지는
+않는다. 경로 선택도 예측 장애물과 근사 운동 모델에 의존한다.
 
-- `Town12/ParkingExit`: 경로 점수 100, 페널티 1.0, 종합 점수 100
-- `Town12/BlockedIntersection`: 경로 점수 100, 페널티 1.0, 종합 점수 100
-- 두 실행 모두 VLM 오류, 충돌, 경로 차선 이탈 0
+## 공개 범위와 권리
 
-교차로 실행에서는 VLM의 이른 회전 예측을 경로 명령과 일치할 때까지
-보류하고, 일치한 구간에서만 CARLA 지도 분기를 목표점으로 사용했다. 상세한
-조건, 집계 수치, 한계는 [검증 기록](docs/verified-prototype.md)에 적었다.
+포함하는 것은 독립 참조 코드, 설계 설명, 사실적 집계 검증 기록이다.
+다음 자료는 포함하지 않는다.
 
-## 설계 이유
+- HiP-AD 등 제3자 소스·설정·수정 패치·통합 코드
+- 모델 가중치, 데이터셋, 이미지, 영상, 논문 그림
+- 원본 실행 로그와 프레임별 평가 산출물
 
-- 고수준 의미 판단과 연속 제어를 분리해 VLM의 불안정성이 차량 제어에 직접 전달되는 것을 줄인다.
-- 기존 계획기를 다시 학습하지 않고도 후보 선택 단계에 결합할 수 있다.
-- 명령별 후보 수를 제한해 의미적으로 잘못된 모드가 높은 점수만으로 선택되는 문제를 줄인다.
-- 명목상 모드 그룹과 실제 궤적 형태가 다를 수 있으므로, 고정된 인덱스 이름을 맹신하지 않고 오프라인 보정과 기하 검증을 함께 사용한다.
-
-## 이 저장소에 포함하지 않는 것
-
-이 저장소는 아이디어의 독립적인 설명과 제3자 프로젝트에 의존하지
-않는 최소 참조 구현만 담는다. 다음 자료는 포함하지 않는다.
-
-- HiP-AD 또는 다른 제3자 프로젝트의 소스 코드와 설정 파일
-- 모델 가중치, 데이터셋, 이미지, 동영상, 논문 그림
-- 제3자 저장소에서 생성된 원본 로그와 평가 산출물
-- HiP-AD 또는 다른 제3자 파일을 수정한 패치와 통합 코드
-
-## 배경 참고
-
-이 아이디어를 검토한 배경 시스템 중 하나는 [HiP-AD](https://github.com/nullmax-vision/HiP-AD)이다. HiP-AD는 해당 프로젝트 저작자의 저작물이며, 이 저장소는 HiP-AD 공식 프로젝트가 아니고 제휴 관계도 없다. 본 저장소에는 HiP-AD의 코드를 복사하지 않았다. 세부 경계는 [제3자 자료 정책](THIRD_PARTY.md)을 참고한다.
-
-## 공개 및 권리 상태
-
-현재 별도 오픈소스 라이선스를 부여하지 않는다. 저장소 내용에 대한 사용 허가는 [RIGHTS.md](RIGHTS.md)를 따른다. 공개 전에는 [공개 체크리스트](docs/publication-checklist.md)를 검토해야 한다.
+배경 계획기는 [HiP-AD](https://github.com/nullmax-vision/HiP-AD)이며,
+본 저장소는 공식 프로젝트나 제휴 구현이 아니다.
+[제3자 자료 범위](THIRD_PARTY.md), [권리 고지](RIGHTS.md),
+[공개 체크리스트](docs/publication-checklist.md)를 따른다.
+현재 별도 오픈소스 라이선스를 부여하지 않는다.
 
 ## English summary
 
-This repository documents a model-agnostic planner-intervention concept,
-aggregate observations from synchronous and asynchronous local prototypes, and
-an independent asynchronous latest-frame runtime reference. A vision-language
-model supplies validated high-level intent while the base planner retains
-continuous trajectory and control responsibility. The repository contains no
-third-party source code, weights, datasets, figures, videos, raw logs,
-evaluation artifacts, or planner integration patches.
+VLM-guided planner intervention binds camera observations and ego-frame navigation
+to one capture timestamp, validates asynchronous intent, and uses it in planner
+execution. The local control design combines source-time turn completion, joint
+path/speed selection and a steering model shared by candidate rollout and control.
 
-The central result is a controlled open-door failure case that HiP-AD alone did
-not resolve. With asynchronous VLM intervention, `change_lane_left` activated a
-validated adjacent-lane target and bounded trajectory correction for 60 control
-frames; the route then completed with a score of 100 and no collision or lane
-departure. This single case does not establish general superiority over the
-native planner.
+This repository implements only the independent coordinate and latest-frame runtime
+references. Full planner integration remains local. A controlled local evaluation
+completed four trials on three selected routes without collisions; coordinate
+alignment alone did not resolve the development-route collisions. These findings
+do not establish dataset-wide superiority, learned-bridge benefits or real-time
+execution. Third-party source, integration patches and raw evaluation artifacts
+are outside the repository's distribution scope.
