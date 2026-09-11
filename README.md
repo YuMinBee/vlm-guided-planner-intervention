@@ -1,7 +1,7 @@
 # VLM-Guided Planner Intervention
 
 > 상태: 동기식 로컬 프로토타입과 비동기 VLM 개입 주행의 검증 기록,
-> 그리고 독립적 비동기 런타임 참조 구현을 담습니다. 제3자 구현 코드나
+> 그리고 독립적 비동기 런타임·관측 좌표 변환 참조 구현을 담습니다. 제3자 구현 코드나
 > 학습·평가 산출물은 포함하지 않습니다.
 
 ## 한 줄 아이디어
@@ -84,6 +84,20 @@ VLM은 조향이나 가감속을 직접 출력하지 않았다. VLM이 비동기
 
 ## 로컬 프로토타입 검증
 
+2026년 9월 후속 검증에서는 좌표 입력 수정과 제어 개선을 구분했다.
+좌표 수정만으로 충돌이 해결되지는 않았지만, 회전 완료 기억·경로/속도 공동
+선택·검사와 실제 조향의 일치를 적용한 구성에서 선정3개 경로의4회 충돌 없는
+완주를 확인했다. 문제 경로27532에서는 좌표 수정 기존 구성의 구조물1회·차량1회
+충돌이 후속 구성의 두 시드에서 모두0회였다. 전체 데이터셋의 일반적 성능
+우월성이나 학습 연결층의 효과를 뜻하지 않는다.
+
+- [좌표 입력과 비동기 관측 시점](docs/capture-coordinates.md)
+- [후속 제어 구성·비교 결과·한계](docs/grounded-control-validation.md)
+- 좌표 변환 참조 코드: `src/vlm_async_gate/coordinates.py`
+
+후속 제어의 실제 HiP-AD 통합 코드는 공개 범위에 포함하지 않는다. 아래는
+그 이전 동기식 프로토타입의 검증 기록이다.
+
 이 설계를 HiP-AD 기반의 로컬 연구 프로토타입에 연결해 두 개의 통제된
 Bench2Drive 경로에서 확인했다. 두 실행 모두 카메라 프레임마다 로컬 VLM을
 동기식으로 호출했으며, 미리 정한 명령 스케줄이나 강제 명령을 사용하지
@@ -125,8 +139,9 @@ Bench2Drive 경로에서 확인했다. 두 실행 모두 카메라 프레임마�
 ## English summary
 
 This repository documents a model-agnostic planner-intervention concept,
-aggregate observations from synchronous and asynchronous local prototypes, and
-an independent asynchronous latest-frame runtime reference. A vision-language
+aggregate observations from synchronous and asynchronous local prototypes,
+an independent asynchronous latest-frame runtime, and capture-time ego-coordinate
+conversion. A vision-language
 model supplies validated high-level intent while the base planner retains
 continuous trajectory and control responsibility. The repository contains no
 third-party source code, weights, datasets, figures, videos, raw logs,
@@ -138,3 +153,10 @@ validated adjacent-lane target and bounded trajectory correction for 60 control
 frames; the route then completed with a score of 100 and no collision or lane
 departure. This single case does not establish general superiority over the
 native planner.
+
+A later controlled study separates a prompt-coordinate correction from a joint
+path/speed and steering-consistency revision. The full local revision completed
+four trials on three selected routes without collisions; coordinate correction
+alone did not resolve the development-route collisions. The new control
+integration remains local. This repository publishes its method and aggregate
+validation record, together with a planner-independent coordinate reference.
